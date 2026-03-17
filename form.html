@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Academic Portal - Smart Match</title>
+    <style>
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #f0f2f5;
+        display: flex;
+        justify-content: center;
+        padding: 20px;
+      }
+      .card {
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 600px;
+      }
+      .hidden {
+        display: none;
+      }
+      .portal-header {
+        text-align: center;
+        border-bottom: 2px solid #3b82f6;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 12px;
+        margin: 10px 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        box-sizing: border-box;
+      }
+      button {
+        width: 100%;
+        padding: 12px;
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1d4ed8;
+      }
+      .logout-btn {
+        background: #64748b;
+        margin-top: 20px;
+      }
+
+      /* Suggestions Styling */
+      .suggestion-box {
+        margin-top: 20px;
+        padding: 15px;
+        background: #eff6ff;
+        border-radius: 8px;
+        border-left: 5px solid #3b82f6;
+      }
+      .tutor-list {
+        color: #166534;
+        font-weight: bold;
+      }
+      .partner-list {
+        color: #1e40af;
+        font-weight: bold;
+      }
+
+      /* Table for Lecturer */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+        font-size: 0.8rem;
+      }
+      th,
+      td {
+        border: 1px solid #e2e8f0;
+        padding: 8px;
+        text-align: left;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <!-- LOGIN SECTION -->
+      <div id="loginSection">
+        <h2 class="portal-header">University Portal Login</h2>
+        <input
+          type="text"
+          id="username"
+          placeholder="Username ('admin' or 'student')"
+        />
+        <button onclick="handleLogin()">Login</button>
+      </div>
+
+      <!-- STUDENT PORTAL -->
+      <div id="studentPortal" class="hidden">
+        <h2 class="portal-header">Student Assessment & Pairing</h2>
+        <label>Student ID</label><input type="number" id="sid" />
+        <label>Unit ID</label><input type="number" id="uid" />
+        <label>Score (0-100)</label
+        ><input type="number" id="score" placeholder="Enter your score" />
+        <label>Notes</label
+        ><textarea
+          id="content"
+          placeholder="How did you find the unit?"
+        ></textarea>
+
+        <button onclick="submitAndMatch()">Submit & Find Partners</button>
+
+        <!-- The "Smart Match" Result Area -->
+        <div id="matchResults" class="suggestion-box hidden">
+          <h4 style="margin-top: 0">🤝 Peer Matching Results:</h4>
+          <p>
+            <strong>Recommended Tutors:</strong>
+            <span id="tutorList" class="tutor-list"></span>
+          </p>
+          <p>
+            <strong>Suggested Study Partners:</strong>
+            <span id="partnerList" class="partner-list"></span>
+          </p>
+          <p
+            id="resourceMsg"
+            style="font-style: italic; font-size: 0.85rem; color: #64748b"
+          ></p>
+        </div>
+
+        <button class="logout-btn" onclick="location.reload()">Logout</button>
+      </div>
+
+      <!-- LECTURER DASHBOARD -->
+      <div id="lecturerPortal" class="hidden">
+        <h2 class="portal-header">Lecturer Dashboard (Admin)</h2>
+        <div id="reportData">Loading assessments...</div>
+        <button class="logout-btn" onclick="location.reload()">Logout</button>
+      </div>
+    </div>
+
+    <script>
+      function handleLogin() {
+        const user = document.getElementById("username").value;
+        if (user === "admin") {
+          document.getElementById("loginSection").classList.add("hidden");
+          document.getElementById("lecturerPortal").classList.remove("hidden");
+          loadLecturerData();
+        } else if (user === "student") {
+          document.getElementById("loginSection").classList.add("hidden");
+          document.getElementById("studentPortal").classList.remove("hidden");
+        }
+      }
+
+      async function submitAndMatch() {
+        const sid = document.getElementById("sid").value;
+        const uid = document.getElementById("uid").value;
+        const score = parseInt(document.getElementById("score").value);
+
+        const data = {
+          student_id: parseInt(sid),
+          unit_id: parseInt(uid),
+          content: document.getElementById("content").value,
+          teaching_rating: score,
+          comments_on_lecturer: "Student Self-Entry",
+        };
+
+        // 1. Save the feedback
+        const res = await fetch("http://127.0.0.1:8000/feedback/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+        if (res.ok) {
+          // 2. Fetch Suggestions/Groups for this unit
+          const groupRes = await fetch(`http://127.0.0.1:8000/groups/${uid}`);
+          const groupData = await groupRes.json();
+
+          // 3. Logic to show tailored matches
+          document.getElementById("matchResults").classList.remove("hidden");
+          document.getElementById("tutorList").innerText =
+            groupData.advanced.join(", ") || "No tutors available yet.";
+          document.getElementById("partnerList").innerText =
+            groupData.intermediate.join(", ") || "No partners found.";
+
+          // 4. Dynamic Study Material Suggestion
+          const msg = document.getElementById("resourceMsg");
+          if (score < 50) {
+            msg.innerText =
+              "📚 System Suggestion: We've matched you with tutors because your score is below 50. Please check the 'Unit Resources' folder for remedial material.";
+          } else {
+            msg.innerText =
+              "✅ Great work! You've been listed as a partner for others.";
+          }
+        }
+      }
+
+      async function loadLecturerData() {
+        const res = await fetch("http://127.0.0.1:8000/all_feedback/");
+        const data = await res.json();
+        let html = `<table><tr><th>ID</th><th>Unit</th><th>Score</th><th>Comment</th></tr>`;
+        data.forEach((item) => {
+          html += `<tr><td>${item.student_id}</td><td>${item.unit_id}</td><td>${item.teaching_rating}</td><td>${item.content}</td></tr>`;
+        });
+        html += `</table>`;
+        document.getElementById("reportData").innerHTML = html;
+      }
+    </script>
+  </body>
+</html>
